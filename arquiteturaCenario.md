@@ -20,7 +20,7 @@ graph TD
         CACHE[(Cache L1/L2/L3)]
         MMU((MMU))
         RAM[Memória RAM<br>Contém páginas do Kernel e de Processos]
-        DISK[Disco Rígido<br>Swap Area | Spool Area | Arquivos]
+        DISK[Disco Rígido<br>Área de Swap<br>Área de Spool<br>Arquivos]
         PRINTER[Impressora]
     end
     
