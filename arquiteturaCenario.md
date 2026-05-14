@@ -1,100 +1,102 @@
 ```mermaid
-graph TD
+graph TB
+
     subgraph "Espaço do Usuário"
         P[Processo A: Editor de Texto<br>Thread Principal]
     end
 
     subgraph "Kernel (Espaço do Sistema Operacional)"
         K((Kernel))
-        subgraph "Subsistemas do Kernel"
-            MM(Gerenciamento de Memória)
+        subgraph "Módulos do Kernel"
             SCHED(Escalonador)
-            SPOOL(Subsistema de Spooling)
+            MM(Gerenciamento de Memória)
             IO(Gerenciador de I/O)
+            SPOOL(Subsistema de Spooling)
         end
         TP[Tabela de Páginas do Processo A]
     end
 
     subgraph "Hardware Físico"
-        CPU{CPU}
+        CPU_MMU[CPU & MMU]
         CACHE[(Cache L1/L2/L3)]
-        MMU((MMU))
-        RAM[Memória RAM<br>Contém páginas do Kernel e de Processos]
+        RAM[Memória RAM<br>Páginas Kernel/Processos]
         DISK[Disco Rígido<br>Área de Swap<br>Área de Spool<br>Arquivos]
         PRINTER[Impressora]
     end
-    
-    %% --- FLUXO DE EXECUÇÃO ---
 
-    %% Passo 1: Execução Normal
-    P -- "1. Thread pronta" --> SCHED;
-    SCHED -- "2. Seleciona Thread para executar" --> CPU;
-    CPU -- "3. Executa instruções" --o P;
-    CPU -- "4. Busca dados/código<br>(Cache Hit/Miss)" --> CACHE;
-    CACHE -- "Cache Hit" --> CPU;
-    CACHE -- "Cache Miss" --> RAM;
-    RAM -- "Dados retornam" --> CACHE;
+    %% --- FLUXO PRINCIPAL ---
 
-    %% Passo 2: Page Fault (Ação e Reação)
-    CPU -- "5. Thread tenta acessar endereço<br>que não está na RAM" --> MMU;
-    MMU -- "6. Verifica Tabela de Páginas" --> TP;
-    TP -- "7. Bit de Presença = 0" --> MMU;
-    MMU -- "8. Gera Exceção: PAGE FAULT!" --> K;
-    K -- "9. Bloqueia a Thread" --> P;
-    K -- "10. Instrui I/O para buscar página" --> IO;
-    IO -- "11. 'Swap In': Lê página do disco" --> DISK;
-    DISK -- "Página carregada" --> RAM;
-    RAM -- "12. Kernel é notificado (Interrupção)" --> K;
-    K -- "13. Atualiza Tabela de Páginas" --> TP;
-    K -- "14. Move Thread para 'Pronto'" --> SCHED;
+    %% 1. Execução Normal
+    P -- "1. Thread pronta para CPU" --> SCHED;
+    SCHED -- "2. Seleciona Thread" --> CPU_MMU;
+    CPU_MMU -- "3. Executa instruções<br> & Acessa endereços virtuais" --> CACHE;
+    CACHE -- "4a. Cache Hit<br>(dados encontrados)" --> CPU_MMU;
+    CACHE -- "4b. Cache Miss<br>(busca na RAM)" --> RAM;
+    RAM -- "4c. Dados retornam" --> CACHE;
 
-    %% Passo 3: Spooling de Impressão
-    P -- "15. System Call: Imprimir()" --> K;
-    K -- "16. Aciona Subsistema de Spooling" --> SPOOL;
-    SPOOL -- "17. Grava trabalho de impressão no disco" --> DISK;
-    SPOOL -- "18. Libera o Processo A imediatamente" --> P;
-    SPOOL -- "19. Envia trabalho para impressora em 2º plano" --> PRINTER;
+    %% 5. Page Fault (Processo de Swap In)
+    CPU_MMU -- "5. Endereço Virtual<br>(Página não presente)" --> K;
+    K -- "6. Kernel (via MM)<br>Bloqueia Thread & Busca página" --> IO;
+    IO -- "7. Lê página do disco" --> DISK;
+    DISK -- "8. Dados para RAM" --> RAM;
+    RAM -- "9. Kernel notificado<br>(via Interrupção)" --> K;
+    K -- "10. Atualiza Tabela de Páginas" --> TP;
+    K -- "11. Thread para 'Pronto'" --> SCHED;
 
-    %% Estilos
-    style K fill:#c2185b,stroke:#fff,stroke-width:2px,color:#fff
-    style SCHED fill:#7b1fa2,stroke:#fff,color:#fff
-    style MM fill:#512da8,stroke:#fff,color:#fff
-    style CPU fill:#00796b,stroke:#fff,color:#fff
-    style MMU fill:#00796b,stroke:#fff,color:#fff
+    %% 12. Spooling de Impressão
+    P -- "12. System Call: Imprimir()" --> K;
+    K -- "13. Kernel (via SPOOL)<br>Gerencia impressão" --> SPOOL;
+    SPOOL -- "14. Grava trabalho em disco<br>(usa buffers I/O)" --> DISK;
+    SPOOL -- "15. Libera Processo A (UI responsiva)" --> P;
+    SPOOL -- "16. Envia trabalho à impressora<br>(em 2º plano)" --> PRINTER;
+
+    %% Estilos (Cores para clareza)
+    style P fill:#b3e5fc,stroke:#0288d1,stroke-width:2px
+    style K fill:#c2185b,stroke:#a1003f,stroke-width:2px,color:#fff
+    style SCHED fill:#7b1fa2,stroke:#5c007a,color:#fff
+    style MM fill:#512da8,stroke:#370066,color:#fff
+    style IO fill:#0097a7,stroke:#006978,color:#fff
+    style SPOOL fill:#00bcd4,stroke:#00838f,color:#fff
+    style TP fill:#d1c4e9,stroke:#673ab7
+    style CPU_MMU fill:#00796b,stroke:#004d40,stroke-width:2px,color:#fff
+    style CACHE fill:#80cbc4,stroke:#00796b
+    style RAM fill:#81c784,stroke:#388e3c
+    style DISK fill:#ffeb3b,stroke:#fbc02d
+    style PRINTER fill:#f44336,stroke:#d32f2f
 ```
 
-## Guia do Diagrama de Fluxo: Como os Componentes do SO Interagem
+## Guia do Diagrama de Fluxo (Versão 2): Interações Verticais e Compactas
 
-Este diagrama ilustra a interdependência funcional dos componentes do SO durante a execução. Siga os números para entender o fluxo.
+Este diagrama de fluxo, agora mais vertical e compacto, ilustra as interações entre os componentes do Sistema Operacional durante um cenário de uso, focando no "como" as coisas acontecem.
 
 ### Execução Normal (Passos 1-4)
 
-1.  Uma **Thread** do **Processo A** está pronta para executar e entra na fila do **Escalonador**.
-2.  O **Escalonador** do **Kernel** seleciona esta thread para usar a **CPU**.
-3.  A **CPU** começa a executar as instruções da thread.
-4.  Para cada instrução, a **CPU** precisa de dados ou código. Ela primeiro busca na **Cache**. Se encontrar (*Cache Hit*), o acesso é instantâneo. Se não (*Cache Miss*), ela busca na **RAM**, e o dado é copiado para a cache para usos futuros.
+1.  Uma **Thread** do **Processo A** (o editor de texto) está em estado de "pronto" e aguarda sua vez no **Escalonador**.
+2.  O **Escalonador** (parte do **Kernel**) seleciona esta Thread, concedendo-lhe tempo de **CPU**.
+3.  A **CPU** começa a executar as instruções da Thread e, para isso, precisa acessar dados e código.
+4.  A **CPU** tenta buscar os dados primeiramente em sua **Cache** (L1, L2, L3). Se os dados estiverem na Cache (*Cache Hit*), são acessados rapidamente. Se não (*Cache Miss*), a **CPU** busca os dados na **RAM**, e esse bloco de dados é então copiado para a Cache para futuros acessos mais rápidos.
 
-### Cenário de *Page Fault* (Passos 5-14)
+### Cenário de *Page Fault* e *Swap In* (Passos 5-11)
 
-Aqui, a thread tenta acessar uma parte do programa que não está na memória principal (foi movida para a área de *swap* no disco anteriormente pelo **Gerenciamento de Memória**).
+Este fluxo demonstra a colaboração entre hardware e Kernel quando a memória virtual é ativada.
 
-5.  A **CPU**, ao executar a instrução, envia o endereço de memória virtual para a **MMU** (Unidade de Gerenciamento de Memória).
-6.  A **MMU** consulta a **Tabela de Páginas** daquele processo, que é controlada pelo Kernel.
-7.  A tabela informa que a página não está presente na RAM (o "bit de presença" está desativado).
-8.  A **MMU** não consegue traduzir o endereço e dispara uma exceção de hardware: um **Page Fault**, passando o controle à força para o **Kernel**.
-9.  O Kernel assume. Sua primeira ação é instruir o **Escalonador** a bloquear a thread que causou a falha, para que ela não consuma mais CPU.
-10. O Kernel então comanda o **Gerenciador de I/O** para buscar a página necessária no disco.
-11. O Gerenciador de I/O realiza a operação de *Swap In*, lendo a página da "Área de Swap" do **Disco Rígido**.
-12. Assim que a página é carregada em um quadro livre na **RAM**, o controlador de disco envia uma interrupção de hardware para a CPU, notificando o **Kernel** que a operação terminou.
-13. O Kernel atualiza a **Tabela de Páginas** do processo, apontando para a localização da página agora na RAM e marcando-a como "presente".
-14. Finalmente, o Kernel move a thread do estado "bloqueada" de volta para a fila de "prontos", para que o **Escalonador** possa selecioná-la novamente para execução no futuro. A instrução que causou a falha será então re-executada, desta vez com sucesso.
+5.  A **CPU** tenta executar uma instrução que requer um dado em um endereço de memória virtual. Essa requisição passa pela **MMU** (unidade de gerenciamento de memória). A MMU, ao consultar a **Tabela de Páginas** do Processo A, descobre que a página contendo o dado não está na **RAM** (o bit de presença está "0").
+6.  A **MMU** gera uma exceção de **Page Fault**, interrompendo a **CPU** e forçando o controle para o **Kernel**. O **Kernel**, através do seu módulo de **Gerenciamento de Memória**, bloqueia a Thread que causou a falha e inicia o processo para buscar a página.
+7.  O **Kernel** (via **Gerenciador de I/O**) comanda o **Disco Rígido** para ler a página do arquivo de *swap*.
+8.  Os dados da página são transferidos do **Disco** para um quadro livre na **RAM**.
+9.  O controlador de disco notifica o **Kernel** (via interrupção) que a operação de I/O foi concluída.
+10. O **Kernel** atualiza a **Tabela de Páginas** do Processo A para refletir que a página agora está na **RAM** e seu endereço físico.
+11. O **Kernel** move a Thread que estava bloqueada para a fila de "prontos" do **Escalonador**. Eventualmente, a Thread será re-escalonada, e a instrução que causou o *page fault* será re-executada, desta vez com sucesso.
 
-### Cenário de Impressão com *Spooling* (Passos 15-19)
+### Cenário de Impressão com *Spooling* (Passos 12-16)
 
-A thread, agora em execução novamente, recebe um comando para imprimir.
+Este fluxo otimiza a interação com periféricos lentos como impressoras.
 
-15. A thread faz uma chamada de sistema (*system call*) ao **Kernel**, solicitando a impressão.
-16. O Kernel, sabendo que a impressora é lenta, não bloqueia o processo. Em vez disso, ele passa os dados para o **Subsistema de Spooling**.
-17. O Spooling escreve rapidamente todos os dados a serem impressos em uma área de "Spool" no **Disco Rígido**. Essa operação é rápida porque usa **Buffers** de I/O de disco.
-18. Assim que a gravação no disco termina, o Kernel retorna da chamada de sistema, liberando o **Processo A** para continuar seu trabalho. Do ponto de vista do usuário, a impressão foi "instantânea".
-19. Em segundo plano, um processo de sistema (o *spooler*), com suas próprias threads e gerenciado pelo **Escalonador**, lê os dados da área de spool no disco e os envia lentamente para a **Impressora**, sem impactar a performance do processo original.
+12. O **Processo A** (editor de texto) faz uma chamada de sistema (*system call*) ao **Kernel** para imprimir o documento.
+13. O **Kernel** direciona a solicitação ao seu **Subsistema de Spooling**.
+14. O **Subsistema de Spooling** escreve o conteúdo do documento em um arquivo temporário na área de *spool* do **Disco Rígido**. Essa operação de escrita no disco utiliza **Buffers** de I/O, tornando-a rápida.
+15. Após a gravação no disco, o **Subsistema de Spooling** imediatamente sinaliza ao **Kernel** para liberar o **Processo A**. A chamada de sistema retorna, e o editor de texto volta a ser responsivo ao usuário sem ter que esperar a impressora.
+16. Em segundo plano, o **Subsistema de Spooling** continua a enviar os dados do arquivo temporário no **Disco** para a **Impressora**, gerenciando a velocidade do dispositivo de forma assíncrona, sem impactar a interatividade do usuário.
+
+---
+Este diagrama demonstra as interações contínuas e a coordenação do **Kernel** e seus módulos para gerenciar recursos, responder a eventos de hardware e software, e otimizar a experiência do usuário.
